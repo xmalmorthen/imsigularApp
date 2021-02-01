@@ -1,0 +1,212 @@
+#!/usr/bin/bash
+
+runCMD(){
+	$1 &>/dev/null
+	return $?
+}
+
+#check if run as root
+if [ "$EUID" -ne 0 ]; then
+	echo "Please run script as root"
+	exit 1
+fi
+
+#check if args
+if [ -z "$1" ] || [ -z "$2" ]; then
+	echo "Missing parameters: [ USER GROUP GITREPO ]"
+	exit 1
+fi
+
+USER="$1"
+GROUP="$2"
+GITREPO="https://xmalmorthen@bitbucket.org/xmalmorthen/imsigularinstaller.git"
+
+if ! [ -z "$3" ]; then
+	GITREPO="$3"
+fi
+
+if ! runCMD "ping -q -c 1 -W 1 8.8.8.8"; then
+    echo "[ ERROR ] Internet connection required"
+    exit 1
+fi
+
+#check if user exists
+if ! runCMD "id $USER"; then
+    echo "[ ERROR ] User [ $USER ] not found"
+    exit 1
+fi
+
+#check if group exists
+if ! runCMD "getent group $GROUP"; then
+    echo "[ ERROR ] Group [ $GROUP ] not found"
+    exit 1
+fi
+
+#check git 
+if ! runCMD "git --version"; then
+	echo "[ ERROR ] Git is not installed..."
+	exit 1
+fi
+
+if ! runCMD "cd /home/$USER"; then
+	echo "[ ERROR ] Change to user directory error..."
+	exit 1
+fi
+
+if ! runCMD "python3 --version"; then
+	echo "[ ERROR ] Python 3 is required..."
+	exit 1
+fi
+
+WORKINGDIR="$(pwd)/imsigular"
+
+if [ -d $WORKINGDIR ]; then
+	echo "There is already an application installation directory"
+   	read -p "do you wish to overwrite (Y/n)?: " RES
+   
+   	OVERWRITE=${RES,,}
+   
+	if [ $OVERWRITE == 'n' ]; then
+		echo "[ INFO ] Installation cancelled"
+		exit 1
+	else
+		if ! runCMD "rm -rf $WORKINGDIR"; then
+			echo "[ ERROR ] Error trying to overwrite project folder..."
+			exit 1
+		fi
+	fi   
+fi
+
+PYPACKAGEERR=0
+echo "Installing Python packages dependences"
+
+if ! runCMD "python3 -m pip install psutil";            then PYPACKAGEERR=1 echo "[ ERROR ] to try install psutil package";            else echo "[ INFO ] psutil package installed"; fi
+if ! runCMD "python3 -m pip install flask";             then PYPACKAGEERR=1 echo "[ ERROR ] to try install flask package";             else echo "[ INFO ] flask package installed"; fi
+if ! runCMD "python3 -m pip install flask-sqlalchemy";  then PYPACKAGEERR=1 echo "[ ERROR ] to try install flask-sqlalchemy package";  else echo "[ INFO ] flask-sqlalchemy package installed"; fi
+if ! runCMD "python3 -m pip install gevent";            then PYPACKAGEERR=1 echo "[ ERROR ] to try install gevent package";            else echo "[ INFO ] gevent package installed"; fi
+if ! runCMD "python3 -m pip install gevent-websocket";  then PYPACKAGEERR=1 echo "[ ERROR ] to try install websocket package";         else echo "[ INFO ] websocket package installed"; fi
+if ! runCMD "python3 -m pip install pyjwt";             then PYPACKAGEERR=1 echo "[ ERROR ] to try install pyjwt package";             else echo "[ INFO ] pyjwt package installed"; fi
+if ! runCMD "python3 -m pip install python-engineio";   then PYPACKAGEERR=1 echo "[ ERROR ] to try install python-engineio package";   else echo "[ INFO ] python-engineio package installed"; fi
+if ! runCMD "python3 -m pip install python-socketio";   then PYPACKAGEERR=1 echo "[ ERROR ] to try install python-socketio package";   else echo "[ INFO ] python-socketio package installed"; fi
+if ! runCMD "python3 -m pip install flask-socketio";    then PYPACKAGEERR=1 echo "[ ERROR ] to try install flask-socketio package";    else echo "[ INFO ] flask-socketio package installed"; fi
+if ! runCMD "python3 -m pip install python_daemon";     then PYPACKAGEERR=1 echo "[ ERROR ] to try install python_daemon package";     else echo "[ INFO ] python_daemon package installed"; fi
+
+if [ $PYPACKAGEERR == 1 ]; then
+	echo "One or more python dependency packages had trouble installing, this may lead to improper functioning in the application"
+	read -p "do you want to continue with the installation (Y/n)?: " RES
+
+	PARSEDRES=${RES,,}
+   
+	if [ $PARSEDRES == 'n' ]; then
+		echo "[ INFO ] Installation cancelled"
+		exit 1
+	fi
+else
+	echo "Python packages dependences installed"
+fi
+
+
+echo "Cloning IMSIGULARAPP repository from git [ $GITREPO ]"
+if ! runCMD "git clone $GITREPO imsigular"; then
+	echo "[ ERROR ] Error trying to clone repository from git [ $GITREPO ]..."
+	exit 1
+fi
+
+if ! runCMD "cd $WORKINGDIR"; then
+	echo "[ ERROR ] Change to IMSIGULARAPP directory error..."
+	exit 1
+fi
+
+if ! runCMD "chown -R $USER:$GROUP $WORKINGDIR"; then
+	echo "[ ERROR ] Error trying to change the user and group owning the project folder..."
+	exit 1
+fi
+
+if ! runCMD "chmod a+x $WORKINGDIR/scripts/imsigular-*"; then
+	echo "[ ERROR ] Error trying to change execution permissions in script files..."
+	exit 1
+fi
+
+if ! runCMD "chmod a+x $WORKINGDIR/wsServer/imsigular-*"; then
+	echo "[ ERROR ] Error trying to change execution permissions in wsServer files..."
+	exit 1
+fi
+
+echo "[ INFO ] 
+	[ Resolve BUG manually ]
+		Error message: File or stream is not seekable.
+		
+		File: /usr/local/lib/python[ XXX ]/dist-packages/daemon/runner.py
+			self.daemon_context.stdin = open(app.stdin_path, 'w+t',buffering=0)
+			self.daemon_context.stdout = open(app.stdout_path, 'w+t')
+			self.daemon_context.stderr = open(app.stderr_path, 'w+t', buffering=0)			
+			
+		Change the following lines
+			self.daemon_context.stdin = open(app.stdin_path, 'wb+',buffering=0)
+			self.daemon_context.stdout = open(app.stdout_path,  'wb+',buffering=0)
+			self.daemon_context.stderr = open(app.stderr_path, 'wb+', buffering=0)"
+	
+if ! runCMD "which nginx"; then
+	read -p "do you want to install and configure nginx server with IMSIGULARAPP (Y/n)?: " RES
+
+	PARSEDRES=${RES,,}
+   
+	if [ $PARSEDRES == 'y' ]; then
+
+		if ! runCMD "apt-get install nginx"; then
+			echo "[ ERROR ] Error trying to install nginx server..."
+			exit 1
+		fi
+	else
+		echo "
+
+[ INFO ] IMSIGULARAPP installation done..."
+		exit 0
+	fi
+fi
+
+ERR=0
+
+DEFAULTCONFIGFILEPATH="/etc/nginx/sites-available/default"
+
+if ! runCMD "rm -rf $DEFAULTCONFIGFILEPATH"; then ERR=1; fi
+if ! runCMD "touch $DEFAULTCONFIGFILEPATH"; then ERR=1; fi
+
+if [ $ERR == 0 ]; then
+	echo "server {listen 80;return 301 https://\$host\$request_uri?;}" > $DEFAULTCONFIGFILEPATH
+fi
+
+if ! runCMD "chmod 644 $DEFAULTCONFIGFILEPATH"; then ERR=1; fi
+
+if [ $ERR == 1 ]; then
+	echo "[ ERROR ] When try overwrite default nginx config site file"
+	exit 1
+fi
+
+IMSISSLCONFIGFILEPATH="/etc/nginx/conf.d/imsi-ssl.conf"
+
+if ! runCMD "rm -rf $IMSISSLCONFIGFILEPATH"; then ERR=1; fi
+if ! runCMD "touch $IMSISSLCONFIGFILEPATH"; then ERR=1; fi
+
+if [ $ERR == 0 ]; then
+	echo "server {listen      443;server_name _;ssl         on;ssl_certificate     $WORKINGDIR/ssl/imsiSSL.crt;ssl_certificate_key $WORKINGDIR/ssl/imsiSSL.key;index       index.html;root        $WORKINGDIR/app;location / {try_files \$uri\$args \$uri\$args/ /index.html;}}" > $IMSISSLCONFIGFILEPATH
+fi
+
+if ! runCMD "chmod 644 $IMSISSLCONFIGFILEPATH"; then ERR=1; fi
+
+if ! runCMD "systemctl restart nginx"; then
+	echo "[ ERROR ] When try restarting nginx service..."
+	exit 1
+fi
+
+
+[ `whoami` = root ] || exec su -c $0 root
+
+test -f .Xauthority.bak && mv .Xauthority.bak .Xauthority
+cp -a /home/imsi/.Xauthority /root/.Xauthority
+chown root: .Xauthority
+XAUTHORITY=/root/.Xauthority sudo firefox https://bitbucket.org/xmalmorthen/imsigularinstaller/src/master/README.md &
+
+echo "
+
+[ INFO ] IMSIGULARAPP installation done..."
