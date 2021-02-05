@@ -189,7 +189,7 @@ if ! runCMD "rm -rf $IMSISSLCONFIGFILEPATH"; then ERR=1; fi
 if ! runCMD "touch $IMSISSLCONFIGFILEPATH"; then ERR=1; fi
 
 if [ $ERR == 0 ]; then
-	echo "server {listen      443;server_name _;ssl         on;ssl_certificate     $WORKINGDIR/ssl/imsiSSL.crt;ssl_certificate_key $WORKINGDIR/ssl/imsiSSL.key;index       index.html;root        $WORKINGDIR/app;location / {try_files \$uri\$args \$uri\$args/ /index.html;}}" > $IMSISSLCONFIGFILEPATH
+	echo "server {listen      443;server_name _;ssl         on;ssl_certificate     $WORKINGDIR/ssl/imsiSSL.crt;ssl_certificate_key $WORKINGDIR/ssl/imsiSSL.key;index       index.html;root        $WORKINGDIR/app;location / {try_files \$uri\$args \$uri\$args/ /index.html; if ($request_filename ~* ^.*?/([^/]*?)$){set $filename $1; }if ($filename ~* ^.*?\.(eot)|(ttf)|(woff)$){add_header Access-Control-Allow-Origin *;}}}" > $IMSISSLCONFIGFILEPATH
 fi
 
 if ! runCMD "chmod 644 $IMSISSLCONFIGFILEPATH"; then ERR=1; fi
